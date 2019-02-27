@@ -296,6 +296,7 @@ sub ComputeDigest {
 my $Prefix;
 
 sub UpdatePrefix {
+  return $CurrentDir;
   my $x = shift;
   my $y = basename($x);
   $x =~ s/\Q$y\E$//;
@@ -309,7 +310,7 @@ sub UpdatePrefix {
 }
 
 sub GetPrefix {
-  return $Prefix;
+  return $CurrentDir;
 }
 
 ##----------------------------------------------------------------------------##
