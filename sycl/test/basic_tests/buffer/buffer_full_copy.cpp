@@ -1,3 +1,6 @@
+// XFAIL: cuda
+// TODO: Fix fail for CUDA.
+//
 // RUN: %clangxx %s -o %t1.out -lsycl
 // RUN: env SYCL_DEVICE_TYPE=HOST %t1.out
 // RUN: %clangxx -fsycl  -fsycl-targets=%sycl_triple  %s -o %t2.out
@@ -5,9 +8,6 @@
 // RUN: %CPU_RUN_PLACEHOLDER %t2.out
 // RUN: %GPU_RUN_PLACEHOLDER %t2.out
 // RUN: %ACC_RUN_PLACEHOLDER %t2.out
-
-// TODO: cuda_piEnqueueMemBufferCopy not implemented
-// XFAIL: cuda
 
 //==------------- buffer_full_copy.cpp - SYCL buffer basic test ------------==//
 //
