@@ -1,3 +1,7 @@
+// RUN: %clangxx -fsycl %s -o %t1.out
+// RUN: %CPU_RUN_PLACEHOLDER %t1.out
+// RUN: %GPU_RUN_PLACEHOLDER %t1.out
+
 //==---- memcpy.cpp - USM memcpy test --------------------------------------==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -5,9 +9,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// RUN: %clangxx -fsycl %s -o %t1.out
-// RUN: %CPU_RUN_PLACEHOLDER %t1.out
-// RUN: %GPU_RUN_PLACEHOLDER %t1.out
 
 #include "../helpers.hpp"
 #include <CL/sycl.hpp>
