@@ -100,6 +100,31 @@ pi_result cuda_piEventRetain(pi_event event);
 
 } // extern "C"
 
+void worker::execute() {
+  bool Terminate = false;
+  while (!Terminate) {
+    std::unique_lock<std::mutex> lock(workQueueGateMutex_);
+    workQueueGate_.wait(lock);
+    while (!workQueue_.empty()) {
+      work item = workQueue_.front();
+      workQueue_.pop();
+      switch (item.kind_) {
+      case work::kind::complete_event:
+        complete_event(static_cast<pi_event>(item.content_));
+        break;
+      case work::kind::terminate:
+        Terminate = true;
+        break;
+      }
+    }
+  }
+}
+
+void worker::complete_event(pi_event event) {
+  event->set_event_complete();
+  cuda_piEventRelease(event);
+}
+
 _pi_event::_pi_event(pi_command_type type, pi_context context, pi_queue queue)
     : commandType_{type}, refCount_{1}, isCompleted_{false}, isRecorded_{false},
       isStarted_{false}, evEnd_{nullptr}, evStart_{nullptr}, evQueued_{nullptr},
@@ -144,6 +169,8 @@ pi_result _pi_event::start() {
   }
 
   isStarted_ = true;
+  // let observers know that the event is "submitted"
+  trigger_callback(get_execution_status());
   return result;
 }
 
@@ -190,6 +217,23 @@ pi_result _pi_event::record() {
 
     try {
       result = PI_CHECK_ERROR(cuEventRecord(evEnd_, cuStream));
+
+      result = cuda_piEventRetain(this);
+      try {
+        result = PI_CHECK_ERROR(cuLaunchHostFunc(
+            cuStream,
+            [](void *userData) {
+              pi_event event = reinterpret_cast<pi_event>(userData);
+              pi_platform platform =
+                  event->get_context()->get_device()->platform_;
+              platform->worker_.enqueue_complete_event(event);
+            },
+            this));
+      } catch (...) {
+        // If host function fails to enqueue we must release the event here
+        result = cuda_piEventRelease(this);
+        throw;
+      }
     } catch (pi_result error) {
       result = error;
     }
@@ -210,6 +254,7 @@ pi_result _pi_event::wait() {
   if (is_native_event()) {
     try {
       retErr = PI_CHECK_ERROR(cuEventSynchronize(evEnd_));
+      isCompleted_ = true;
     } catch (pi_result error) {
       retErr = error;
     }
@@ -221,30 +266,12 @@ pi_result _pi_event::wait() {
     retErr = PI_SUCCESS;
   }
 
+  auto is_success = retErr == PI_SUCCESS;
+  auto status = is_success ? get_execution_status() : pi_int32(retErr);
+
+  trigger_callback(status);
+
   return retErr;
-}
-
-pi_event_status _pi_event::get_execution_status() const noexcept {
-
-  if (!is_recorded()) {
-    return PI_EVENT_SUBMITTED;
-  }
-
-  if (is_native_event()) {
-    // native event status
-
-    auto status = cuEventQuery(get());
-    if (status == CUDA_ERROR_NOT_READY) {
-      return PI_EVENT_RUNNING;
-    } else if (status != CUDA_SUCCESS) {
-      cl::sycl::detail::pi::die("Invalid CUDA event status");
-    }
-    return PI_EVENT_COMPLETE;
-  } else {
-    // user event status
-
-    return is_completed() ? PI_EVENT_COMPLETE : PI_EVENT_RUNNING;
-  }
 }
 
 // iterates over the event wait list, returns correct pi_result error codes.
@@ -2511,24 +2538,21 @@ pi_result cuda_piEventGetInfo(pi_event event, pi_event_info param_name,
 
   switch (param_name) {
   case PI_EVENT_INFO_COMMAND_QUEUE:
-    return getInfo<pi_queue>(param_value_size, param_value,
-                             param_value_size_ret, event->get_queue());
+    return getInfo(param_value_size, param_value, param_value_size_ret,
+                   event->get_queue());
   case PI_EVENT_INFO_COMMAND_TYPE:
-    return getInfo<pi_command_type>(param_value_size, param_value,
-                                    param_value_size_ret,
-                                    event->get_command_type());
+    return getInfo(param_value_size, param_value, param_value_size_ret,
+                   event->get_command_type());
   case PI_EVENT_INFO_REFERENCE_COUNT:
-    return getInfo<pi_uint32>(param_value_size, param_value,
-                              param_value_size_ret,
-                              event->get_reference_count());
+    return getInfo(param_value_size, param_value, param_value_size_ret,
+                   event->get_reference_count());
   case PI_EVENT_INFO_COMMAND_EXECUTION_STATUS: {
-    return getInfo<pi_event_status>(param_value_size, param_value,
-                                    param_value_size_ret,
-                                    event->get_execution_status());
+    return getInfo(param_value_size, param_value, param_value_size_ret,
+                   static_cast<pi_event_status>(event->get_execution_status()));
   }
   case PI_EVENT_INFO_CONTEXT:
-    return getInfo<pi_context>(param_value_size, param_value,
-                               param_value_size_ret, event->get_context());
+    return getInfo(param_value_size, param_value, param_value_size_ret,
+                   event->get_context());
   default:
     PI_HANDLE_UNKNOWN_PARAM_NAME(param_name);
   }
@@ -2563,13 +2587,21 @@ pi_result cuda_piEventGetProfilingInfo(
   return {};
 }
 
-pi_result cuda_piEventSetCallback(
-    pi_event event, pi_int32 command_exec_callback_type,
-    void (*pfn_notify)(pi_event event, pi_int32 event_command_status,
-                       void *user_data),
-    void *user_data) {
-  cl::sycl::detail::pi::die("cuda_piEventSetCallback not implemented");
-  return {};
+pi_result cuda_piEventSetCallback(pi_event event,
+                                  pi_int32 command_exec_callback_type,
+                                  pfn_notify notify, void *user_data) {
+
+  assert(event);
+  assert(notify);
+  assert(command_exec_callback_type == PI_EVENT_SUBMITTED ||
+         command_exec_callback_type == PI_EVENT_RUNNING ||
+         command_exec_callback_type == PI_EVENT_COMPLETE);
+  event_callback callback(pi_event_status(command_exec_callback_type), notify,
+                          user_data);
+
+  event->set_event_callback(callback);
+
+  return PI_SUCCESS;
 }
 
 pi_result cuda_piEventSetStatus(pi_event event, pi_int32 execution_status) {
@@ -2582,7 +2614,7 @@ pi_result cuda_piEventSetStatus(pi_event event, pi_int32 execution_status) {
   }
 
   if (execution_status == PI_EVENT_COMPLETE) {
-    return event->set_user_event_complete();
+    return event->set_event_complete();
   } else if (execution_status < 0) {
     // TODO: A negative integer value causes all enqueued commands that wait
     // on this user event to be terminated.

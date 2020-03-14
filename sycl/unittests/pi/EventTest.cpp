@@ -15,7 +15,7 @@
 using namespace cl::sycl;
 
 namespace pi {
-class DISABLED_EventTest : public ::testing::Test {
+class EventTest : public ::testing::Test {
 protected:
   std::vector<detail::plugin> Plugins;
 
@@ -25,13 +25,13 @@ protected:
   pi_device _device;
   pi_result _result;
 
-  DISABLED_EventTest()
+  EventTest()
       : _context{nullptr}, _queue{nullptr}, _device{nullptr},
         _result{PI_INVALID_VALUE} {
     Plugins = detail::pi::initialize();
   }
 
-  ~DISABLED_EventTest() override = default;
+  ~EventTest() override = default;
 
   void SetUp() override {
     pi_uint32 numPlatforms = 0;
@@ -78,7 +78,7 @@ protected:
 // TODO: need more negative tests to show errors being reported when expected
 // (invalid arguments etc).
 
-TEST_F(DISABLED_EventTest, PICreateEvent) {
+TEST_F(EventTest, PICreateEvent) {
   pi_event foo;
   ASSERT_EQ((Plugins[0].call_nocheck<detail::PiApiKind::piEventCreate>(_context,
                                                                        &foo)),
@@ -89,7 +89,105 @@ TEST_F(DISABLED_EventTest, PICreateEvent) {
             PI_SUCCESS);
 }
 
-TEST_F(DISABLED_EventTest, piEventGetInfo) {
+struct callback_user_data {
+  pi_int32 event_type;
+  int index;
+};
+
+TEST_F(EventTest, piEventSetCallback) {
+
+  constexpr size_t event_type_count = 3;
+
+  static bool triggered_flag[event_type_count] = {false, false, false};
+
+  pi_int32 event_callback_types[event_type_count] = {
+      PI_EVENT_SUBMITTED, PI_EVENT_RUNNING, PI_EVENT_COMPLETE};
+
+  callback_user_data user_data[event_type_count];
+
+  auto callback = [](pi_event event, pi_int32 status, void *data) {
+    ASSERT_NE(data, nullptr);
+
+    callback_user_data *pdata = static_cast<callback_user_data *>(data);
+
+#ifndef NDEBUG
+    printf("\tEvent callback %d of type %d triggered\n", pdata->index,
+           pdata->event_type);
+#endif
+
+    triggered_flag[pdata->index] = true;
+  };
+
+  // gate event lets us register callbacks before letting the enqueued work be
+  // executed.
+  pi_event gateEvent;
+  ASSERT_EQ((Plugins[0].call_nocheck<detail::PiApiKind::piEventCreate>(
+                _context, &gateEvent)),
+            PI_SUCCESS);
+
+  constexpr const size_t dataCount = 10000u;
+  std::vector<int> data(dataCount);
+  auto size_in_bytes = data.size() * sizeof(int);
+
+  pi_mem memObj;
+  ASSERT_EQ(
+      (Plugins[0].call_nocheck<detail::PiApiKind::piMemBufferCreate>(
+          _context, PI_MEM_FLAGS_ACCESS_RW, size_in_bytes, nullptr, &memObj)),
+      PI_SUCCESS);
+
+  pi_event syncEvent;
+  ASSERT_EQ(
+      (Plugins[0].call_nocheck<detail::PiApiKind::piEnqueueMemBufferWrite>(
+          _queue, memObj, false, 0, size_in_bytes, data.data(), 1, &gateEvent,
+          &syncEvent)),
+      PI_SUCCESS);
+
+  for (size_t i = 0; i < event_type_count; i++) {
+    user_data[i].event_type = event_callback_types[i];
+    user_data[i].index = i;
+    ASSERT_EQ((Plugins[0].call_nocheck<detail::PiApiKind::piEventSetCallback>(
+                  syncEvent, event_callback_types[i], callback, user_data + i)),
+              PI_SUCCESS);
+  }
+
+  ASSERT_EQ((Plugins[0].call_nocheck<detail::PiApiKind::piEventSetStatus>(
+                gateEvent, PI_EVENT_COMPLETE)),
+            PI_SUCCESS);
+  ASSERT_EQ(
+      (Plugins[0].call_nocheck<detail::PiApiKind::piEventsWait>(1, &syncEvent)),
+      PI_SUCCESS);
+
+  bool success = false;
+  // Waiting for callback (max 10 seconds)...
+  for (int i = 0; i < 100; ++i) {
+
+    int sucessful_events = 0;
+
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(100)); // 1/10th second
+
+    for (size_t k = 0; k < event_type_count; ++k) {
+      if (triggered_flag[k] == true) {
+        ++sucessful_events;
+      }
+    }
+
+    if (sucessful_events == event_type_count) {
+      success = true;
+      break;
+    }
+  }
+
+  EXPECT_TRUE(success);
+  ASSERT_EQ(
+      (Plugins[0].call_nocheck<detail::PiApiKind::piEventRelease>(gateEvent)),
+      PI_SUCCESS);
+  ASSERT_EQ(
+      (Plugins[0].call_nocheck<detail::PiApiKind::piEventRelease>(syncEvent)),
+      PI_SUCCESS);
+}
+
+TEST_F(EventTest, piEventGetInfo) {
 
   pi_event foo;
   ASSERT_EQ((Plugins[0].call_nocheck<detail::PiApiKind::piEventCreate>(_context,
@@ -111,7 +209,7 @@ TEST_F(DISABLED_EventTest, piEventGetInfo) {
             PI_SUCCESS);
 }
 
-TEST_F(DISABLED_EventTest, piEventSetStatus) {
+TEST_F(EventTest, piEventSetStatus) {
 
   pi_event foo;
   ASSERT_EQ((Plugins[0].call_nocheck<detail::PiApiKind::piEventCreate>(_context,
@@ -141,7 +239,7 @@ TEST_F(DISABLED_EventTest, piEventSetStatus) {
             PI_SUCCESS);
 }
 
-TEST_F(DISABLED_EventTest, WaitForManualEventOnOtherThread) {
+TEST_F(EventTest, WaitForManualEventOnOtherThread) {
 
   pi_event foo;
   ASSERT_EQ((Plugins[0].call_nocheck<detail::PiApiKind::piEventCreate>(_context,
@@ -187,7 +285,7 @@ TEST_F(DISABLED_EventTest, WaitForManualEventOnOtherThread) {
             PI_SUCCESS);
 }
 
-TEST_F(DISABLED_EventTest, piEnqueueEventsWait) {
+TEST_F(EventTest, piEnqueueEventsWait) {
 
   constexpr const size_t dataCount = 10u;
   int output[dataCount] = {};
