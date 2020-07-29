@@ -50,7 +50,7 @@ void HandleCheck::registerMatchers(MatchFinder *Finder) {
 
   auto getByTokenCallVarInit = varDecl(
                                 hasInitializer(anyOf(
-                                  hasDescendant( 
+                                  hasDescendant(
                                    cxxMemberCallExpr(
                                      callee(getByTokenDecl),
                                      argumentCountIs(2),
@@ -125,7 +125,7 @@ void HandleCheck::registerMatchers(MatchFinder *Finder) {
                           unless(hasAncestor(getByTokenCallIfPar)),
                           unless(hasAncestor(getByTokenCallAssign)),
                           unless(hasAncestor(getByTokenCallRetPar)),
-                          unless(hasAncestor(getByTokenCallVarInit)),  
+                          unless(hasAncestor(getByTokenCallVarInit)),
                           hasArgument(0,cxxConstructExpr(hasType(edmGetTokenT)))
                         ).bind("getbytokencallexpr");
 
@@ -177,7 +177,7 @@ void HandleCheck::report(CXXMemberCallExpr const * matchedCallExpr, calltype ct)
     }
 
 
-    
+
     for (auto I: matchedCallExpr->arguments()) {
        auto qualtype = I->getType();
        //auto type = qualtype.getTypePtr();
@@ -226,7 +226,7 @@ void HandleCheck::report(CXXMemberCallExpr const * matchedCallExpr, calltype ct)
              if (n != std::string::npos) {
                  fname.erase(n,thisp.size());
              }
-       }    
+       }
     }
     switch (ct) {
       case ifpar: {
@@ -243,7 +243,7 @@ void HandleCheck::report(CXXMemberCallExpr const * matchedCallExpr, calltype ct)
         diag(callstart, StringRef("bool return call of function " + getbytoken +"("+edmgettoken+"<"+ttemptype+">&, "+edmhandle+"<"+ttemptype+">&) is deprecated and should be replaced here with bool("+ qname + " = "+ioname+ gethandle + "("+fname+"))."), DiagnosticIDs::Warning)
           << FixItHint::CreateReplacement(callrange, StringRef(replacement));
         break;
-      }; 
+      };
 
       case direct : {
         auto callrange = SourceRange(callstart,callend);

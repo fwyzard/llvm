@@ -137,6 +137,19 @@ Refactoring
 
 - Renaming templates is supported, and many other complex cases were fixed.
 
+Go-to-definition
+^^^^^^^^^^^^^^^^
+
+- New :doc:`cms-handle
+  <clang-tidy/checks/cms-handle>` check.
+
+  Finds uses up getByHandle and replaces with get call.
+
+- New :doc:`cppcoreguidelines-init-variables
+  <clang-tidy/checks/cppcoreguidelines-init-variables>` check.
+
+- Dependent names in templates may be heuristically resolved
+
 - Attempting to rename to an invalid or conflicting name can produce an error
   message rather than broken code. (Not all cases are detected!)
 

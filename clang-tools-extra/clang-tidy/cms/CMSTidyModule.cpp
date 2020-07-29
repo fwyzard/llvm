@@ -24,7 +24,7 @@ public:
   }
 };
 
- 
+
 } // namespace cms
 
 // Register the CMSTidyModule using this statically initialized variable.
