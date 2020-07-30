@@ -1,3 +1,5 @@
+// RUN: %check_clang_tidy %s cms-handle %t
+
 namespace edm {
 
   template<typename T>
