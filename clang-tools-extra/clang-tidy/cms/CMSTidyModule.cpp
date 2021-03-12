@@ -11,6 +11,7 @@
 #include "../ClangTidyModule.h"
 #include "../ClangTidyModuleRegistry.h"
 #include "HandleCheck.h"
+#include "ESRecordGetCheck.h"
 
 namespace clang {
 namespace tidy {
@@ -21,6 +22,8 @@ public:
   void addCheckFactories(ClangTidyCheckFactories &CheckFactories) override {
     CheckFactories.registerCheck<HandleCheck>(
         "cms-handle");
+    CheckFactories.registerCheck<ESRecordGetCheck>(
+        "cms-esrget");
   }
 };
 
