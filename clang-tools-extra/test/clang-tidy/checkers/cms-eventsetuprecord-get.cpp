@@ -36,6 +36,21 @@ namespace edm {
     bool get(std::string const&, ESHandle<T>&);
 
   };
+
+  template <typename T>
+  class EventSetupRecordImplementation : public EventSetupRecord {
+  public:
+
+    using EventSetupRecord::get;
+
+    template <typename PRODUCT>
+    PRODUCT const& get(ESGetToken<PRODUCT, T> const & iToken) const;
+
+
+    template <typename PRODUCT>
+    PRODUCT const& get(ESGetToken<PRODUCT, T>& iToken) const;
+
+  }; 
   
   class EventSetup {
   public:
@@ -51,6 +66,9 @@ namespace edm {
 
 struct FooR : public edm::EventSetupRecord {};
 struct FooP {};
+
+class ESFooR : public edm::EventSetupRecordImplementation<ESFooR> {};
+
 
 class Bar {
 public:
@@ -94,6 +112,19 @@ bool Bar::doWork(edm::EventSetup& iSetup, edm::ESGetToken<FooP, FooR> const& tok
 // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: direct call of function EventSetupRecord::get(ESHandle&) is deprecated and should be replaced with a call to EventSetup::getHandle(ESGetToken&). To use ESGetToken see https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideHowToGetDataFromES#In_ED_module To get data with the token see https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideHowToGetDataFromES#Getting_data_from_EventSetup_wit [cms-esrget]
   pFooR->get("test", handle);
 // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: direct call of function EventSetupRecord::get(ESHandle&) is deprecated and should be replaced with a call to EventSetup::getHandle(ESGetToken&). To use ESGetToken see https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideHowToGetDataFromES#In_ED_module To get data with the token see https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideHowToGetDataFromES#Getting_data_from_EventSetup_wit [cms-esrget]
+
+  return true;
+}
+
+class Baz {
+  public:
+    edm::ESGetToken<FooR, ESFooR> m_token;
+    bool doWork( ESFooR const& record);
+};
+
+bool Baz::doWork( ESFooR const& record) {
+
+  const auto& esFooR = record.get(m_token);
 
   return true;
 }

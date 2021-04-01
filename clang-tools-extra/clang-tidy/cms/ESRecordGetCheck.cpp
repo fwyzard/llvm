@@ -17,31 +17,13 @@ namespace clang {
 namespace tidy {
 namespace cms {
 
-const std::string esgettoken = "ESGetToken";
-const std::string eshandle = "ESHandle";
-const std::string esrecord = "EventSetupRecord";
-const std::string get = "get";
-const std::string thisp = "this->";
-
 
 void ESRecordGetCheck::registerMatchers(MatchFinder *Finder) {
-//  auto edmESGetToken = cxxRecordDecl(hasName("edm::ESGetToken"));
-//  auto edmESHandle = cxxRecordDecl(hasName("edm::ESHandle"));
-//  auto edmEventSetup = cxxRecordDecl(hasName("edm::EventSetup"));
-//  auto edmESRecord = cxxRecordDecl(hasName("edm::EventSetupReord"));
-//
-//  auto edmESHandleVarRef = declRefExpr(
-//                           hasDeclaration(varDecl()),
-//                           hasType(edmESHandle));
-//  auto edmGetTokenRef = declRefExpr(
-//                           hasDeclaration(varDecl()),
-//                           hasType(edmESGetToken));
-//  auto edmEventSetupRef = declRefExpr(
-//                       hasDeclaration(varDecl()),
-//                       hasType(edmEventSetup));
-//  
+
+  auto edmESGetToken = cxxRecordDecl(hasName("edm::ESGetToken"));
+
   auto ESRecord = cxxRecordDecl(
-                            isSameOrDerivedFrom("EventSetupRecord")
+                            isSameOrDerivedFrom(hasName("EventSetupRecord"))
                           );
 
   auto ESRgetDecl = cxxMethodDecl(
@@ -50,7 +32,8 @@ void ESRecordGetCheck::registerMatchers(MatchFinder *Finder) {
                          );
 
   auto getCall = cxxMemberCallExpr(
-                          callee(ESRgetDecl)
+                          callee(ESRgetDecl),
+                          unless(hasArgument(0,expr(hasType(edmESGetToken))))
                         ).bind("getcallexpr");
 
   Finder->addMatcher(getCall,this);
